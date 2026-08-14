@@ -1,0 +1,165 @@
+---
+# ============================================================
+# Bamboo Data Center - Installation
+# ============================================================
+
+# ------------------------------------------------------------
+# Determine current installation state
+# ------------------------------------------------------------
+
+- name: Check Bamboo installation directory
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}"
+  register: bamboo_install_dir_stat
+
+- name: Check Bamboo startup script
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}/bin/start-bamboo.sh"
+  register: bamboo_start_script
+
+- name: Determine whether Bamboo is already installed
+  ansible.builtin.set_fact:
+    bamboo_already_installed: >-
+      {{
+        bamboo_install_dir_stat.stat.exists
+        and
+        bamboo_start_script.stat.exists
+      }}
+
+- name: Display Bamboo installation state
+  ansible.builtin.debug:
+    msg: >-
+      Bamboo {{ bamboo_version }} is
+      {{ 'already installed' if bamboo_already_installed else 'not installed' }}
+      at {{ bamboo_install_dir }}.
+
+# ------------------------------------------------------------
+# Extract distribution
+# ------------------------------------------------------------
+
+- name: Extract Bamboo distribution
+  ansible.builtin.unarchive:
+    src: "{{ role_path }}/files/{{ bamboo_archive }}"
+    dest: "{{ bamboo_base_dir }}"
+    remote_src: true
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+  when: not bamboo_already_installed
+
+# ------------------------------------------------------------
+# Handle Atlassian archive directory name
+# ------------------------------------------------------------
+
+- name: Check extracted Atlassian Bamboo directory
+  ansible.builtin.stat:
+    path: "{{ bamboo_base_dir }}/atlassian-bamboo-{{ bamboo_version }}"
+  register: bamboo_extracted_dir
+  when: not bamboo_already_installed
+
+- name: Rename extracted Bamboo directory
+  ansible.builtin.command:
+    cmd: >-
+      mv
+      {{ bamboo_base_dir }}/atlassian-bamboo-{{ bamboo_version }}
+      {{ bamboo_install_dir }}
+  when:
+    - not bamboo_already_installed
+    - bamboo_extracted_dir.stat.exists | default(false)
+    - bamboo_install_dir != bamboo_base_dir + '/atlassian-bamboo-' + bamboo_version
+
+# ------------------------------------------------------------
+# Verify installation
+# ------------------------------------------------------------
+
+- name: Verify Bamboo installation directory
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}"
+  register: bamboo_install_verify
+
+- name: Validate Bamboo installation directory
+  ansible.builtin.assert:
+    that:
+      - bamboo_install_verify.stat.exists
+      - bamboo_install_verify.stat.isdir
+    fail_msg: >-
+      Bamboo installation directory was not created:
+      {{ bamboo_install_dir }}.
+    success_msg: >-
+      Bamboo installation directory validated:
+      {{ bamboo_install_dir }}.
+
+- name: Verify Bamboo start script
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}/bin/start-bamboo.sh"
+  register: bamboo_start_script_verify
+
+- name: Verify Bamboo stop script
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}/bin/stop-bamboo.sh"
+  register: bamboo_stop_script_verify
+
+- name: Validate Bamboo startup scripts
+  ansible.builtin.assert:
+    that:
+      - bamboo_start_script_verify.stat.exists
+      - bamboo_start_script_verify.stat.isreg
+      - bamboo_stop_script_verify.stat.exists
+      - bamboo_stop_script_verify.stat.isreg
+    fail_msg: >-
+      Bamboo start/stop scripts were not found under
+      {{ bamboo_install_dir }}/bin.
+    success_msg: "Bamboo start/stop scripts validated."
+
+# ------------------------------------------------------------
+# Permissions
+# ------------------------------------------------------------
+
+- name: Set Bamboo installation ownership
+  ansible.builtin.file:
+    path: "{{ bamboo_install_dir }}"
+    state: directory
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    recurse: true
+
+- name: Ensure Bamboo scripts are executable
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    mode: "0750"
+  loop:
+    - "{{ bamboo_install_dir }}/bin/start-bamboo.sh"
+    - "{{ bamboo_install_dir }}/bin/stop-bamboo.sh"
+
+# ------------------------------------------------------------
+# Version verification
+# ------------------------------------------------------------
+
+- name: Check Bamboo version file
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}/atlassian-bamboo/WEB-INF/classes/bamboo-version.properties"
+  register: bamboo_version_file
+
+- name: Display Bamboo version-file status
+  ansible.builtin.debug:
+    msg: >-
+      Bamboo version metadata file
+      {{ 'found' if bamboo_version_file.stat.exists else 'not found; archive structure will be used for version validation' }}.
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+- name: Bamboo installation summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo installation completed"
+      - "Version     : {{ bamboo_version }}"
+      - "Install Dir : {{ bamboo_install_dir }}"
+      - "Home Dir    : {{ bamboo_home }}"
+      - "User        : {{ bamboo_user }}"
+      - "Group       : {{ bamboo_group }}"
+      - "Clustered   : {{ bamboo_clustered }}"
+      - "========================================"

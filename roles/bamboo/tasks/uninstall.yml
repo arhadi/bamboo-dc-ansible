@@ -1,0 +1,163 @@
+---
+# ============================================================
+# Bamboo Data Center - Uninstall
+# ============================================================
+
+# ------------------------------------------------------------
+# Uninstall plan
+# ------------------------------------------------------------
+
+- name: Display Bamboo uninstall plan
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo uninstall"
+      - "Install Dir : {{ bamboo_install_dir }}"
+      - "Home Dir    : {{ bamboo_home }}"
+      - "Service     : {{ bamboo_service_name }}"
+      - "Purge Data  : {{ bamboo_purge_data | default(false) | bool }}"
+      - "Database    : {{ postgres_database }} - PRESERVED"
+      - "DB User     : {{ postgres_user }} - PRESERVED"
+      - "========================================"
+
+# ------------------------------------------------------------
+# Detect service
+# ------------------------------------------------------------
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Determine whether Bamboo service exists
+  ansible.builtin.set_fact:
+    bamboo_service_exists: >-
+      {{
+        (bamboo_service_name + '.service')
+        in ansible_facts.services
+      }}
+
+# ------------------------------------------------------------
+# Stop and disable Bamboo
+# ------------------------------------------------------------
+
+- name: Stop Bamboo service
+  ansible.builtin.systemd:
+    name: "{{ bamboo_service_name }}"
+    state: stopped
+  when: bamboo_service_exists | bool
+
+- name: Disable Bamboo service
+  ansible.builtin.systemd:
+    name: "{{ bamboo_service_name }}"
+    enabled: false
+  when: bamboo_service_exists | bool
+
+# ------------------------------------------------------------
+# Remove systemd service
+# ------------------------------------------------------------
+
+- name: Remove Bamboo systemd unit
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ bamboo_service_name }}.service"
+    state: absent
+  register: bamboo_service_removed
+
+- name: Reload systemd after Bamboo service removal
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: bamboo_service_removed.changed
+
+- name: Reset failed Bamboo systemd state
+  ansible.builtin.command:
+    cmd: systemctl reset-failed
+  changed_when: false
+  when: bamboo_service_removed.changed
+
+# ------------------------------------------------------------
+# Remove installation
+# ------------------------------------------------------------
+
+- name: Remove Bamboo installation directory
+  ansible.builtin.file:
+    path: "{{ bamboo_install_dir }}"
+    state: absent
+  when: bamboo_remove_install_dir | default(true) | bool
+
+# ------------------------------------------------------------
+# Bamboo home
+#
+# PRESERVED by default.
+# ------------------------------------------------------------
+
+- name: Remove Bamboo home directory when purge requested
+  ansible.builtin.file:
+    path: "{{ bamboo_home }}"
+    state: absent
+  when:
+    - bamboo_purge_data | default(false) | bool
+    - bamboo_remove_home | default(false) | bool
+
+# ------------------------------------------------------------
+# Service account
+#
+# PRESERVED by default.
+# ------------------------------------------------------------
+
+- name: Remove Bamboo service user
+  ansible.builtin.user:
+    name: "{{ bamboo_user }}"
+    state: absent
+    remove: false
+  when:
+    - bamboo_purge_data | default(false) | bool
+    - bamboo_remove_user | default(false) | bool
+
+- name: Remove Bamboo service group
+  ansible.builtin.group:
+    name: "{{ bamboo_group }}"
+    state: absent
+  when:
+    - bamboo_purge_data | default(false) | bool
+    - bamboo_remove_group | default(false) | bool
+
+# ------------------------------------------------------------
+# Verify removal
+# ------------------------------------------------------------
+
+- name: Check Bamboo installation directory after uninstall
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}"
+  register: bamboo_uninstall_install_dir
+
+- name: Check Bamboo home after uninstall
+  ansible.builtin.stat:
+    path: "{{ bamboo_home }}"
+  register: bamboo_uninstall_home
+
+- name: Verify Bamboo installation removal
+  ansible.builtin.assert:
+    that:
+      - >
+        not (bamboo_remove_install_dir | default(true) | bool)
+        or not bamboo_uninstall_install_dir.stat.exists
+    fail_msg: >-
+      Bamboo installation directory still exists:
+      {{ bamboo_install_dir }}
+    success_msg: "Bamboo installation removal validated."
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+- name: Display Bamboo uninstall summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo uninstall completed"
+      - "Install Dir : {{ 'REMOVED' if (bamboo_remove_install_dir | default(true) | bool) else 'PRESERVED' }}"
+      - "Home Dir    : {{ 'REMOVED' if ((bamboo_purge_data | default(false) | bool) and (bamboo_remove_home | default(false) | bool)) else 'PRESERVED' }}"
+      - "Service     : REMOVED"
+      - "OS User     : {{ 'REMOVED' if ((bamboo_purge_data | default(false) | bool) and (bamboo_remove_user | default(false) | bool)) else 'PRESERVED' }}"
+      - "OS Group    : {{ 'REMOVED' if ((bamboo_purge_data | default(false) | bool) and (bamboo_remove_group | default(false) | bool)) else 'PRESERVED' }}"
+      - "Database    : NOT MODIFIED"
+      - "DB User     : NOT MODIFIED"
+      - "========================================"

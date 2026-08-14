@@ -1,0 +1,62 @@
+---
+# ============================================================
+# Bamboo Data Center - Default Variables
+# ============================================================
+
+# Bamboo
+bamboo_version: "12.1.10"
+
+bamboo_user: bamboo
+bamboo_group: bamboo
+
+# Installation
+bamboo_base_dir: /app
+bamboo_install_dir: "{{ bamboo_base_dir }}/bamboo-{{ bamboo_version }}"
+bamboo_home: "{{ bamboo_base_dir }}/bamboo-data"
+
+bamboo_archive: "atlassian-bamboo-{{ bamboo_version }}.tar.gz"
+
+# Java
+bamboo_java_package: java-21-openjdk
+bamboo_java_home: /usr/lib/jvm/java-21-openjdk
+
+# Network
+bamboo_http_port: 8085
+
+# PostgreSQL
+postgres_version: 17
+postgres_host: "127.0.0.1"
+postgres_port: 15432
+postgres_database: bamboo
+postgres_user: bamboo
+postgres_password: "bamboo"
+
+# JVM
+bamboo_jvm_minimum_memory: 2g
+bamboo_jvm_maximum_memory: 4g
+
+# Data Center
+bamboo_clustered: false
+
+# Service
+bamboo_service_name: bamboo
+
+# Validation
+bamboo_validation_url: "http://127.0.0.1:{{ bamboo_http_port }}"
+bamboo_validation_retries: 60
+bamboo_validation_delay: 10
+
+# ============================================================
+# Uninstall behaviour
+# ============================================================
+
+# Remove application binaries during normal uninstall.
+bamboo_remove_install_dir: true
+
+# Destructive removal is disabled by default.
+bamboo_purge_data: false
+
+# These only take effect when bamboo_purge_data=true.
+bamboo_remove_home: false
+bamboo_remove_user: false
+bamboo_remove_group: false

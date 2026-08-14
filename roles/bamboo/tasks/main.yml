@@ -1,0 +1,29 @@
+---
+# ============================================================
+# Bamboo Data Center - Main Role
+# ============================================================
+
+- name: Run Bamboo prechecks
+  ansible.builtin.include_tasks: precheck.yml
+
+- name: Install Bamboo prerequisites
+  ansible.builtin.include_tasks: prerequisites.yml
+
+- name: Install Bamboo
+  ansible.builtin.include_tasks: install.yml
+
+- name: Validate Bamboo database
+  ansible.builtin.include_tasks: database.yml
+
+- name: Configure Bamboo
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Configure Bamboo Data Center cluster
+  ansible.builtin.include_tasks: cluster.yml
+  when: bamboo_clustered | bool
+
+- name: Configure Bamboo systemd service
+  ansible.builtin.include_tasks: systemd.yml
+
+- name: Validate Bamboo
+  ansible.builtin.include_tasks: validate.yml

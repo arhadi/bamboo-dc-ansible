@@ -1,0 +1,180 @@
+---
+# ============================================================
+# Bamboo Data Center - Validation
+# ============================================================
+
+# ------------------------------------------------------------
+# Installation
+# ------------------------------------------------------------
+
+- name: Verify Bamboo installation directory
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}"
+  register: bamboo_validation_install
+
+- name: Validate Bamboo installation
+  ansible.builtin.assert:
+    that:
+      - bamboo_validation_install.stat.exists
+      - bamboo_validation_install.stat.isdir
+    fail_msg: >-
+      Bamboo installation directory is missing:
+      {{ bamboo_install_dir }}.
+
+# ------------------------------------------------------------
+# Bamboo home
+# ------------------------------------------------------------
+
+- name: Verify Bamboo home directory
+  ansible.builtin.stat:
+    path: "{{ bamboo_home }}"
+  register: bamboo_validation_home
+
+- name: Validate Bamboo home
+  ansible.builtin.assert:
+    that:
+      - bamboo_validation_home.stat.exists
+      - bamboo_validation_home.stat.isdir
+    fail_msg: >-
+      Bamboo home directory is missing:
+      {{ bamboo_home }}.
+
+# ------------------------------------------------------------
+# systemd
+# ------------------------------------------------------------
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Verify Bamboo systemd service exists
+  ansible.builtin.assert:
+    that:
+      - (bamboo_service_name + '.service') in ansible_facts.services
+    fail_msg: >-
+      Bamboo systemd service does not exist:
+      {{ bamboo_service_name }}.service.
+
+- name: Get Bamboo service state
+  ansible.builtin.command:
+    cmd: "systemctl is-active {{ bamboo_service_name }}"
+  register: bamboo_service_active
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Get Bamboo service enabled state
+  ansible.builtin.command:
+    cmd: "systemctl is-enabled {{ bamboo_service_name }}"
+  register: bamboo_service_enabled
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Validate Bamboo service state
+  ansible.builtin.assert:
+    that:
+      - bamboo_service_active.stdout | trim == "active"
+      - bamboo_service_enabled.stdout | trim == "enabled"
+    fail_msg: >-
+      Bamboo service validation failed.
+      Active={{ bamboo_service_active.stdout | trim }}
+      Enabled={{ bamboo_service_enabled.stdout | trim }}
+    success_msg: "Bamboo systemd service validated."
+
+# ------------------------------------------------------------
+# HTTP
+# ------------------------------------------------------------
+
+- name: Wait for Bamboo HTTP port
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ bamboo_http_port }}"
+    state: started
+    timeout: 300
+    delay: 5
+  changed_when: false
+
+- name: Validate Bamboo HTTP endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ bamboo_http_port }}/"
+    method: GET
+    follow_redirects: all
+    status_code:
+      - 200
+    return_content: false
+    timeout: 30
+  register: bamboo_http_validation
+  retries: 30
+  delay: 10
+  until:
+    - bamboo_http_validation.status is defined
+    - bamboo_http_validation.status == 200
+
+# ------------------------------------------------------------
+# Validate JVM configuration
+# ------------------------------------------------------------
+
+- name: Verify Bamboo JVM configuration
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}/bin/setenv.sh"
+  register: bamboo_setenv_validation
+
+- name: Validate Bamboo JVM configuration file
+  ansible.builtin.assert:
+    that:
+      - bamboo_setenv_validation.stat.exists
+      - bamboo_setenv_validation.stat.isreg
+    fail_msg: >-
+      Bamboo JVM configuration does not exist:
+      {{ bamboo_install_dir }}/bin/setenv.sh
+    success_msg: "Bamboo JVM configuration file validated."
+
+- name: Read configured Bamboo JVM memory
+  ansible.builtin.shell: |
+    grep -E '^: \$\{JVM_(MINIMUM|MAXIMUM)_MEMORY:=' \
+      "{{ bamboo_install_dir }}/bin/setenv.sh"
+  args:
+    executable: /bin/bash
+  register: bamboo_jvm_memory_configuration
+  changed_when: false
+
+- name: Validate configured Bamboo JVM memory
+  ansible.builtin.assert:
+    that:
+      - "('JVM_MINIMUM_MEMORY:=' ~ bamboo_jvm_minimum_memory) in bamboo_jvm_memory_configuration.stdout"
+      - "('JVM_MAXIMUM_MEMORY:=' ~ bamboo_jvm_maximum_memory) in bamboo_jvm_memory_configuration.stdout"
+    fail_msg: |
+      Bamboo JVM memory configuration validation failed.
+      Expected Xms: {{ bamboo_jvm_minimum_memory }}
+      Expected Xmx: {{ bamboo_jvm_maximum_memory }}
+      Detected:
+      {{ bamboo_jvm_memory_configuration.stdout }}
+    success_msg: >-
+      Bamboo JVM memory validated:
+      Xms={{ bamboo_jvm_minimum_memory }},
+      Xmx={{ bamboo_jvm_maximum_memory }}.
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+- name: Bamboo validation summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo validation completed"
+      - "Version           : {{ bamboo_version }}"
+      - "Install Directory : {{ bamboo_install_dir }}"
+      - "Home Directory    : {{ bamboo_home }}"
+      - "HTTP Port         : {{ bamboo_http_port }}"
+      - "Database          : {{ postgres_database }}"
+      - "PostgreSQL        : {{ postgres_host }}:{{ postgres_port }}"
+      - "Service           : {{ bamboo_service_name }}"
+      - "Service State     : {{ bamboo_service_active.stdout | trim }}"
+      - "Service Enabled   : {{ bamboo_service_enabled.stdout | trim }}"
+      - "JVM Xms           : {{ bamboo_jvm_minimum_memory }}"
+      - "JVM Xmx           : {{ bamboo_jvm_maximum_memory }}"
+      - "Data Center Mode   : {{ bamboo_clustered }}"
+      - "========================================"
+      - "Next: Complete setup at http://{{ ansible_default_ipv4.address | default(inventory_hostname) }}:{{ bamboo_http_port }}"
+      - "Complete the Bamboo Setup Wizard and apply the Data Center license."

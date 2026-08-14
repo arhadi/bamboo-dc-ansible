@@ -1,0 +1,182 @@
+---
+# ============================================================
+# Bamboo Data Center - PostgreSQL Database Validation
+# ============================================================
+
+# ------------------------------------------------------------
+# PostgreSQL connectivity
+# ------------------------------------------------------------
+
+- name: Wait for PostgreSQL
+  ansible.builtin.wait_for:
+    host: "{{ postgres_host }}"
+    port: "{{ postgres_port }}"
+    state: started
+    timeout: 10
+  changed_when: false
+
+# ------------------------------------------------------------
+# Validate database login
+# ------------------------------------------------------------
+
+- name: Validate Bamboo PostgreSQL login
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -h
+      - "{{ postgres_host }}"
+      - -p
+      - "{{ postgres_port | string }}"
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - "{{ postgres_database }}"
+      - -tAc
+      - "SELECT current_database() || '|' || current_user;"
+  environment:
+    PGPASSWORD: "{{ postgres_password }}"
+  register: bamboo_database_login
+  changed_when: false
+  no_log: false
+  check_mode: false
+
+- name: Verify Bamboo database login
+  ansible.builtin.assert:
+    that:
+      - bamboo_database_login.rc == 0
+      - bamboo_database_login.stdout | trim == postgres_database ~ '|' ~ postgres_user
+    fail_msg: >-
+      Unable to authenticate to PostgreSQL database
+      {{ postgres_database }} at
+      {{ postgres_host }}:{{ postgres_port }}
+      as {{ postgres_user }}.
+    success_msg: "Bamboo PostgreSQL authentication validated."
+
+# ------------------------------------------------------------
+# Database encoding
+# ------------------------------------------------------------
+
+- name: Get Bamboo database encoding
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -h
+      - "{{ postgres_host }}"
+      - -p
+      - "{{ postgres_port | string }}"
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - "{{ postgres_database }}"
+      - -tAc
+      - "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname=current_database();"
+  environment:
+    PGPASSWORD: "{{ postgres_password }}"
+  register: bamboo_database_encoding
+  changed_when: false
+  check_mode: false
+
+- name: Verify Bamboo database encoding
+  ansible.builtin.assert:
+    that:
+      - bamboo_database_encoding.stdout | trim == "UTF8"
+    fail_msg: >-
+      Bamboo database {{ postgres_database }} is not UTF8.
+      Detected encoding:
+      {{ bamboo_database_encoding.stdout | trim }}.
+    success_msg: "Bamboo database encoding validated: UTF8."
+
+# ------------------------------------------------------------
+# Database ownership
+# ------------------------------------------------------------
+
+- name: Get Bamboo database owner
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -h
+      - "{{ postgres_host }}"
+      - -p
+      - "{{ postgres_port | string }}"
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - "{{ postgres_database }}"
+      - -tAc
+      - "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database();"
+  environment:
+    PGPASSWORD: "{{ postgres_password }}"
+  register: bamboo_database_owner
+  changed_when: false
+  check_mode: false
+
+- name: Verify Bamboo database owner
+  ansible.builtin.assert:
+    that:
+      - bamboo_database_owner.stdout | trim == postgres_user
+    fail_msg: >-
+      Incorrect owner for database {{ postgres_database }}.
+      Expected: {{ postgres_user }}
+      Detected: {{ bamboo_database_owner.stdout | trim }}
+    success_msg: >-
+      Bamboo database ownership validated:
+      {{ postgres_user }}.
+
+# ------------------------------------------------------------
+# PostgreSQL server version
+# ------------------------------------------------------------
+
+- name: Get PostgreSQL server version
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -h
+      - "{{ postgres_host }}"
+      - -p
+      - "{{ postgres_port | string }}"
+      - -U
+      - "{{ postgres_user }}"
+      - -d
+      - "{{ postgres_database }}"
+      - -tAc
+      - "SHOW server_version;"
+  environment:
+    PGPASSWORD: "{{ postgres_password }}"
+  register: bamboo_postgres_server_version
+  changed_when: false
+  check_mode: false
+
+- name: Display PostgreSQL server version
+  ansible.builtin.debug:
+    msg: >-
+      PostgreSQL server version:
+      {{ bamboo_postgres_server_version.stdout | trim }}
+
+- name: Verify PostgreSQL major version
+  ansible.builtin.assert:
+    that:
+      - (bamboo_postgres_server_version.stdout | trim).split('.')[0] | int == postgres_version | int
+    fail_msg: >-
+      PostgreSQL server version does not match the configured version.
+      Expected major version: {{ postgres_version }}
+      Detected: {{ bamboo_postgres_server_version.stdout | trim }}
+    success_msg: >-
+      PostgreSQL {{ postgres_version }} server validated.
+
+# ------------------------------------------------------------
+# Database summary
+# ------------------------------------------------------------
+
+- name: Bamboo database validation summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo database validation completed"
+      - "Host       : {{ postgres_host }}"
+      - "Port       : {{ postgres_port }}"
+      - "Database   : {{ postgres_database }}"
+      - "User       : {{ postgres_user }}"
+      - "Owner      : {{ bamboo_database_owner.stdout | trim }}"
+      - "Encoding   : {{ bamboo_database_encoding.stdout | trim }}"
+      - "PostgreSQL : {{ bamboo_postgres_server_version.stdout | trim }}"
+      - "========================================"

@@ -1,0 +1,270 @@
+---
+# ============================================================
+# Bamboo Data Center - Prechecks
+# ============================================================
+
+- name: Display Bamboo deployment plan
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo Data Center deployment"
+      - "Version       : {{ bamboo_version }}"
+      - "Install Dir   : {{ bamboo_install_dir }}"
+      - "Home Dir      : {{ bamboo_home }}"
+      - "HTTP Port     : {{ bamboo_http_port }}"
+      - "Database      : {{ postgres_database }}"
+      - "PostgreSQL    : {{ postgres_host }}:{{ postgres_port }}"
+      - "Java Home     : {{ bamboo_java_home }}"
+      - "Clustered     : {{ bamboo_clustered }}"
+      - "========================================"
+
+# ------------------------------------------------------------
+# Operating system
+# ------------------------------------------------------------
+
+- name: Verify supported operating system family
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "RedHat"
+      - ansible_distribution_major_version | int == 9
+    fail_msg: >-
+      This automation requires RHEL-compatible version 9.
+      Detected: {{ ansible_distribution }}
+      {{ ansible_distribution_version }}.
+    success_msg: >-
+      Operating system validated:
+      {{ ansible_distribution }} {{ ansible_distribution_version }}.
+
+# ------------------------------------------------------------
+# Architecture
+# ------------------------------------------------------------
+
+- name: Verify supported CPU architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture == "x86_64"
+    fail_msg: >-
+      Unsupported architecture: {{ ansible_architecture }}.
+      This automation expects x86_64.
+    success_msg: "Architecture validated: {{ ansible_architecture }}."
+
+# ------------------------------------------------------------
+# Memory
+# ------------------------------------------------------------
+
+- name: Verify minimum system memory
+  ansible.builtin.assert:
+    that:
+      - ansible_memtotal_mb | int >= 4096
+    fail_msg: >-
+      Insufficient system memory.
+      Detected: {{ ansible_memtotal_mb }} MB.
+      Minimum required by this automation: 4096 MB.
+    success_msg: >-
+      Memory validation passed:
+      {{ ansible_memtotal_mb }} MB available.
+
+# ------------------------------------------------------------
+# /app
+# ------------------------------------------------------------
+
+- name: Check Bamboo base directory
+  ansible.builtin.stat:
+    path: "{{ bamboo_base_dir }}"
+  register: bamboo_base_dir_stat
+
+- name: Verify Bamboo base directory exists
+  ansible.builtin.assert:
+    that:
+      - bamboo_base_dir_stat.stat.exists
+      - bamboo_base_dir_stat.stat.isdir
+    fail_msg: >-
+      Bamboo base directory {{ bamboo_base_dir }} does not exist.
+      Create/mount it before deployment.
+    success_msg: >-
+      Bamboo base directory validated: {{ bamboo_base_dir }}.
+
+# ------------------------------------------------------------
+# Disk space
+# ------------------------------------------------------------
+
+- name: Get available disk space on Bamboo base directory
+  ansible.builtin.command:
+    cmd: "df -Pk {{ bamboo_base_dir }}"
+  register: bamboo_disk_space
+  changed_when: false
+  check_mode: false
+
+- name: Display raw disk space information
+  ansible.builtin.debug:
+    var: bamboo_disk_space.stdout_lines
+
+- name: Verify disk space information was returned
+  ansible.builtin.assert:
+    that:
+      - bamboo_disk_space.stdout_lines is defined
+      - bamboo_disk_space.stdout_lines | length >= 2
+    fail_msg: >-
+      Unable to determine available disk space for
+      {{ bamboo_base_dir }}.
+
+- name: Extract available disk space
+  ansible.builtin.set_fact:
+    bamboo_available_space_kb: >-
+      {{
+        bamboo_disk_space.stdout_lines[-1].split()[3] | int
+      }}
+
+- name: Convert available disk space to GB
+  ansible.builtin.set_fact:
+    bamboo_available_space_gb: >-
+      {{
+        (
+          bamboo_available_space_kb | float
+          / 1024
+          / 1024
+        ) | round(2)
+      }}
+
+- name: Display available disk space
+  ansible.builtin.debug:
+    msg: >-
+      Available disk space on {{ bamboo_base_dir }}:
+      {{ bamboo_available_space_gb }} GB
+
+- name: Verify minimum available disk space
+  ansible.builtin.assert:
+    that:
+      - bamboo_available_space_gb | float >= 10
+    fail_msg: >-
+      Insufficient free space on {{ bamboo_base_dir }}.
+      Available: {{ bamboo_available_space_gb }} GB.
+      Minimum required by this automation: 10 GB.
+    success_msg: >-
+      Disk validation passed.
+      Available on {{ bamboo_base_dir }}:
+      {{ bamboo_available_space_gb }} GB.
+
+# ------------------------------------------------------------
+# Bamboo archive
+# ------------------------------------------------------------
+
+- name: Check Bamboo installation archive
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/{{ bamboo_archive }}"
+  register: bamboo_archive_stat
+
+- name: Verify Bamboo installation archive exists
+  ansible.builtin.assert:
+    that:
+      - bamboo_archive_stat.stat.exists
+      - bamboo_archive_stat.stat.isreg
+      - bamboo_archive_stat.stat.size | int > 0
+    fail_msg: >-
+      Bamboo archive not found or empty:
+      {{ role_path }}/files/{{ bamboo_archive }}
+    success_msg: >-
+      Bamboo archive found:
+      {{ bamboo_archive }}
+      ({{ (bamboo_archive_stat.stat.size | int / 1024 / 1024) | round(2) }} MB).
+
+- name: Validate Bamboo archive integrity
+  ansible.builtin.command:
+    cmd: "tar -tzf {{ role_path }}/files/{{ bamboo_archive }}"
+  register: bamboo_archive_validation
+  changed_when: false
+
+- name: Verify Bamboo archive integrity
+  ansible.builtin.assert:
+    that:
+      - bamboo_archive_validation.rc == 0
+    fail_msg: >-
+      Bamboo archive validation failed:
+      {{ bamboo_archive }}.
+    success_msg: "Bamboo archive integrity validated."
+
+# ------------------------------------------------------------
+# Existing installation
+# ------------------------------------------------------------
+
+- name: Check existing Bamboo installation directory
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}"
+  register: bamboo_existing_install
+
+- name: Display existing installation status
+  ansible.builtin.debug:
+    msg: >-
+      Bamboo installation directory {{ bamboo_install_dir }}
+      {{ 'already exists' if bamboo_existing_install.stat.exists else 'does not exist' }}.
+
+# ------------------------------------------------------------
+# PostgreSQL network connectivity
+# ------------------------------------------------------------
+
+- name: Check PostgreSQL TCP connectivity
+  ansible.builtin.wait_for:
+    host: "{{ postgres_host }}"
+    port: "{{ postgres_port }}"
+    timeout: 5
+    state: started
+  changed_when: false
+
+# ------------------------------------------------------------
+# Port checks
+# ------------------------------------------------------------
+
+- name: Check whether Bamboo HTTP port is already listening
+  ansible.builtin.shell: |
+    ss -lntH | awk '{print $4}' | grep -Eq '[:.]{{ bamboo_http_port }}$'
+  args:
+    executable: /bin/bash
+  register: bamboo_http_port_check
+  changed_when: false
+  failed_when: false
+
+- name: Display Bamboo HTTP port status
+  ansible.builtin.debug:
+    msg: >-
+      Bamboo HTTP port {{ bamboo_http_port }} is
+      {{ 'already in use' if bamboo_http_port_check.rc == 0 else 'available' }}.
+
+# ------------------------------------------------------------
+# Configuration sanity
+# ------------------------------------------------------------
+
+- name: Validate Bamboo configuration variables
+  ansible.builtin.assert:
+    that:
+      - bamboo_version | length > 0
+      - bamboo_version != "TBD"
+      - bamboo_user | length > 0
+      - bamboo_group | length > 0
+      - bamboo_home | length > 1
+      - bamboo_install_dir | length > 1
+      - postgres_host | length > 0
+      - postgres_port | int > 0
+      - postgres_database | length > 0
+      - postgres_user | length > 0
+      - bamboo_http_port | int > 0
+    fail_msg: "One or more required Bamboo variables are invalid."
+    success_msg: "Bamboo configuration variables validated."
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+- name: Bamboo precheck summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo prechecks completed"
+      - "OS            : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Architecture  : {{ ansible_architecture }}"
+      - "Memory        : {{ ansible_memtotal_mb }} MB"
+      - "Free /app     : {{ bamboo_available_space_gb }} GB"
+      - "Archive       : {{ bamboo_archive }}"
+      - "PostgreSQL    : {{ postgres_host }}:{{ postgres_port }}"
+      - "HTTP Port     : {{ bamboo_http_port }}"
+      - "Clustered     : {{ bamboo_clustered }}"
+      - "========================================"

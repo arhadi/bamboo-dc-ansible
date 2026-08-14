@@ -1,0 +1,136 @@
+---
+# ============================================================
+# Bamboo Data Center - Configuration
+# ============================================================
+
+# ------------------------------------------------------------
+# Bamboo Home
+# ------------------------------------------------------------
+
+- name: Create Bamboo home directory
+  ansible.builtin.file:
+    path: "{{ bamboo_home }}"
+    state: directory
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    mode: "0750"
+
+- name: Create Bamboo home subdirectories
+  ansible.builtin.file:
+    path: "{{ bamboo_home }}/{{ item }}"
+    state: directory
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    mode: "0750"
+  loop:
+    - logs
+    - temp
+
+# ------------------------------------------------------------
+# bamboo-init.properties
+# ------------------------------------------------------------
+
+- name: Configure Bamboo home
+  ansible.builtin.template:
+    src: bamboo-init.properties.j2
+    dest: "{{ bamboo_install_dir }}/atlassian-bamboo/WEB-INF/classes/bamboo-init.properties"
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    mode: "0640"
+    backup: true
+  notify:
+    - Restart Bamboo
+
+# ------------------------------------------------------------
+# JVM configuration
+# ------------------------------------------------------------
+
+- name: Verify Bamboo setenv.sh exists
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}/bin/setenv.sh"
+  register: bamboo_setenv
+
+- name: Validate Bamboo setenv.sh
+  ansible.builtin.assert:
+    that:
+      - bamboo_setenv.stat.exists
+      - bamboo_setenv.stat.isreg
+    fail_msg: >-
+      Bamboo setenv.sh was not found:
+      {{ bamboo_install_dir }}/bin/setenv.sh
+    success_msg: "Bamboo setenv.sh validated."
+
+- name: Configure Bamboo minimum JVM memory
+  ansible.builtin.lineinfile:
+    path: "{{ bamboo_install_dir }}/bin/setenv.sh"
+    regexp: '^: \$\{JVM_MINIMUM_MEMORY:='
+    line: ': ${JVM_MINIMUM_MEMORY:={{ bamboo_jvm_minimum_memory }}}'
+    backup: true
+  notify:
+    - Restart Bamboo
+
+- name: Configure Bamboo maximum JVM memory
+  ansible.builtin.lineinfile:
+    path: "{{ bamboo_install_dir }}/bin/setenv.sh"
+    regexp: '^: \$\{JVM_MAXIMUM_MEMORY:='
+    line: ': ${JVM_MAXIMUM_MEMORY:={{ bamboo_jvm_maximum_memory }}}'
+  notify:
+    - Restart Bamboo
+
+- name: Configure BAMBOO_HOME in setenv.sh
+  ansible.builtin.lineinfile:
+    path: "{{ bamboo_install_dir }}/bin/setenv.sh"
+    regexp: '^#?BAMBOO_HOME='
+    line: 'BAMBOO_HOME="{{ bamboo_home }}"'
+  notify:
+    - Restart Bamboo
+
+# ------------------------------------------------------------
+# Verify configuration
+# ------------------------------------------------------------
+
+- name: Verify bamboo-init.properties
+  ansible.builtin.stat:
+    path: "{{ bamboo_install_dir }}/atlassian-bamboo/WEB-INF/classes/bamboo-init.properties"
+  register: bamboo_init_properties
+
+- name: Validate bamboo-init.properties
+  ansible.builtin.assert:
+    that:
+      - bamboo_init_properties.stat.exists
+      - bamboo_init_properties.stat.isreg
+    fail_msg: >-
+      Bamboo initialization configuration was not created.
+    success_msg: >-
+      Bamboo initialization configuration validated.
+
+# ------------------------------------------------------------
+# Permissions
+# ------------------------------------------------------------
+
+- name: Set Bamboo home ownership
+  ansible.builtin.file:
+    path: "{{ bamboo_home }}"
+    state: directory
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    recurse: true
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+- name: Bamboo configuration summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo configuration completed"
+      - "Version     : {{ bamboo_version }}"
+      - "Install Dir : {{ bamboo_install_dir }}"
+      - "Home Dir    : {{ bamboo_home }}"
+      - "JAVA_HOME   : {{ bamboo_java_home }}"
+      - "JVM Xms     : {{ bamboo_jvm_minimum_memory }}"
+      - "JVM Xmx     : {{ bamboo_jvm_maximum_memory }}"
+      - "HTTP Port   : {{ bamboo_http_port }}"
+      - "Clustered   : {{ bamboo_clustered }}"
+      - "========================================"

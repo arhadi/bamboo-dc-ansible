@@ -1,0 +1,11 @@
+---
+- name: Uninstall Bamboo Data Center
+  hosts: bamboo
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Run Bamboo uninstall
+      ansible.builtin.include_role:
+        name: bamboo
+        tasks_from: uninstall

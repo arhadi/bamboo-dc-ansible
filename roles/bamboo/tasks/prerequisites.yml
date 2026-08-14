@@ -1,0 +1,167 @@
+---
+# ============================================================
+# Bamboo Data Center - Prerequisites
+# ============================================================
+
+- name: Install Bamboo prerequisite packages
+  ansible.builtin.dnf:
+    name:
+      - "{{ bamboo_java_package }}"
+      - tar
+      - gzip
+      - unzip
+      - rsync
+      - wget
+      - curl
+      - fontconfig
+      - postgresql17
+    state: present
+
+# ------------------------------------------------------------
+# Service account
+# ------------------------------------------------------------
+
+- name: Create Bamboo group
+  ansible.builtin.group:
+    name: "{{ bamboo_group }}"
+    state: present
+    system: true
+
+- name: Create Bamboo service user
+  ansible.builtin.user:
+    name: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    home: "{{ bamboo_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: false
+    state: present
+
+# ------------------------------------------------------------
+# Directories
+# ------------------------------------------------------------
+
+- name: Create Bamboo base directory
+  ansible.builtin.file:
+    path: "{{ bamboo_base_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create Bamboo home directory
+  ansible.builtin.file:
+    path: "{{ bamboo_home }}"
+    state: directory
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    mode: "0750"
+
+# ------------------------------------------------------------
+# Java
+# ------------------------------------------------------------
+
+- name: Get installed Java version
+  ansible.builtin.command:
+    cmd: java -version
+  register: bamboo_java_version
+  changed_when: false
+  check_mode: false
+
+- name: Display installed Java version
+  ansible.builtin.debug:
+    var: bamboo_java_version.stderr_lines
+
+- name: Verify Java 21 is installed
+  ansible.builtin.assert:
+    that:
+      - "'21' in bamboo_java_version.stderr"
+    fail_msg: |
+      Java 21 validation failed.
+      Detected Java:
+      {{ bamboo_java_version.stderr }}
+    success_msg: "Java 21 validated successfully."
+
+# ------------------------------------------------------------
+# Resolve actual JAVA_HOME
+# ------------------------------------------------------------
+
+- name: Resolve Java executable
+  ansible.builtin.command:
+    cmd: readlink -f /usr/bin/java
+  register: bamboo_java_binary
+  changed_when: false
+  check_mode: false
+
+- name: Determine actual JAVA_HOME
+  ansible.builtin.set_fact:
+    bamboo_resolved_java_home: >-
+      {{ bamboo_java_binary.stdout | dirname | dirname }}
+
+- name: Display resolved JAVA_HOME
+  ansible.builtin.debug:
+    msg: "Resolved JAVA_HOME: {{ bamboo_resolved_java_home }}"
+
+- name: Verify resolved JAVA_HOME
+  ansible.builtin.stat:
+    path: "{{ bamboo_resolved_java_home }}"
+  register: bamboo_java_home_check
+
+- name: Validate resolved JAVA_HOME
+  ansible.builtin.assert:
+    that:
+      - bamboo_java_home_check.stat.exists
+      - bamboo_java_home_check.stat.isdir
+    fail_msg: >-
+      Resolved JAVA_HOME does not exist:
+      {{ bamboo_resolved_java_home }}
+    success_msg: >-
+      JAVA_HOME validated:
+      {{ bamboo_resolved_java_home }}
+
+# Use resolved Java path for remaining role tasks.
+
+- name: Set effective Bamboo JAVA_HOME
+  ansible.builtin.set_fact:
+    bamboo_java_home: "{{ bamboo_resolved_java_home }}"
+
+# ------------------------------------------------------------
+# PostgreSQL client
+# ------------------------------------------------------------
+
+- name: Get PostgreSQL client version
+  ansible.builtin.command:
+    cmd: psql --version
+  register: bamboo_psql_version
+  changed_when: false
+  check_mode: false
+
+- name: Display PostgreSQL client version
+  ansible.builtin.debug:
+    msg: "{{ bamboo_psql_version.stdout }}"
+
+- name: Verify PostgreSQL 17 client
+  ansible.builtin.assert:
+    that:
+      - "'PostgreSQL) 17' in bamboo_psql_version.stdout"
+    fail_msg: >-
+      PostgreSQL 17 client validation failed.
+      Detected: {{ bamboo_psql_version.stdout }}
+    success_msg: "PostgreSQL 17 client validated."
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+- name: Bamboo prerequisites summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo prerequisites completed"
+      - "Java      : Java 21"
+      - "JAVA_HOME : {{ bamboo_java_home }}"
+      - "User      : {{ bamboo_user }}"
+      - "Group     : {{ bamboo_group }}"
+      - "Home      : {{ bamboo_home }}"
+      - "Clustered : {{ bamboo_clustered }}"
+      - "========================================"

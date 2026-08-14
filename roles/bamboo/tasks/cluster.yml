@@ -1,0 +1,50 @@
+---
+# ============================================================
+# Bamboo Data Center - Cluster Preparation
+# ============================================================
+
+- name: Display Bamboo Data Center deployment mode
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo Data Center mode"
+      - "Node        : {{ inventory_hostname }}"
+      - "Home        : {{ bamboo_home }}"
+      - "Clustered   : {{ bamboo_clustered }}"
+      - "========================================"
+
+- name: Verify Bamboo home exists
+  ansible.builtin.stat:
+    path: "{{ bamboo_home }}"
+  register: bamboo_cluster_home
+
+- name: Validate Bamboo home for Data Center
+  ansible.builtin.assert:
+    that:
+      - bamboo_cluster_home.stat.exists
+      - bamboo_cluster_home.stat.isdir
+    fail_msg: >-
+      Bamboo home directory does not exist:
+      {{ bamboo_home }}
+    success_msg: >-
+      Bamboo home directory validated for Data Center mode.
+
+- name: Ensure Bamboo home ownership
+  ansible.builtin.file:
+    path: "{{ bamboo_home }}"
+    state: directory
+    owner: "{{ bamboo_user }}"
+    group: "{{ bamboo_group }}"
+    mode: "0750"
+
+- name: Bamboo Data Center preparation summary
+  ansible.builtin.debug:
+    msg:
+      - "========================================"
+      - "Bamboo Data Center preparation completed"
+      - "Node      : {{ inventory_hostname }}"
+      - "Home      : {{ bamboo_home }}"
+      - "Clustered : {{ bamboo_clustered }}"
+      - "NOTE      : Application cluster initialization"
+      - "            will be completed by Bamboo setup."
+      - "========================================"

@@ -1,0 +1,85 @@
+---
+# ============================================================
+# Bamboo Data Center
+# ============================================================
+
+bamboo_version: "12.1.10"
+
+bamboo_user: bamboo
+bamboo_group: bamboo
+
+# ============================================================
+# Installation
+# ============================================================
+
+bamboo_base_dir: /app
+
+bamboo_install_dir: "/app/bamboo-{{ bamboo_version }}"
+bamboo_home: /app/bamboo-data
+
+bamboo_archive: "atlassian-bamboo-{{ bamboo_version }}.tar.gz"
+
+# ============================================================
+# Java
+# ============================================================
+
+bamboo_java_package: java-21-openjdk
+bamboo_java_home: /usr/lib/jvm/java-21-openjdk-21.0.12.0.8-1.2.el9.x86_64
+
+# ============================================================
+# Network
+# ============================================================
+
+bamboo_http_port: 8085
+
+# ============================================================
+# PostgreSQL 17
+# ============================================================
+
+postgres_version: 17
+
+postgres_host: "127.0.0.1"
+postgres_port: 15432
+
+postgres_database: bamboo
+postgres_user: bamboo
+
+# TEMPORARY for initial validation only.
+# Move this to Ansible Vault after successful deployment.
+postgres_password: "bamboo"
+
+# ============================================================
+# JVM
+# ============================================================
+
+bamboo_jvm_minimum_memory: 2g
+bamboo_jvm_maximum_memory: 4g
+
+# ============================================================
+# Data Center / Cluster
+# ============================================================
+
+bamboo_clustered: true
+
+# ============================================================
+# Service
+# ============================================================
+
+bamboo_service_name: bamboo
+
+# ============================================================
+# Validation
+# ============================================================
+
+bamboo_validation_url: "http://127.0.0.1:8085"
+bamboo_validation_retries: 60
+bamboo_validation_delay: 10
+
+# ============================================================
+# Uninstall
+# ============================================================
+
+bamboo_remove_install_dir: true
+bamboo_remove_home: false
+bamboo_remove_user: false
+bamboo_remove_group: false

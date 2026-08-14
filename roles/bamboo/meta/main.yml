@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: bamboo
+  author: iZeno
+  description: Deploy Atlassian Bamboo Data Center
+  min_ansible_version: "2.14"
+
+dependencies: []

@@ -1,0 +1,29 @@
+---
+# ============================================================
+# Bamboo Data Center - systemd
+# ============================================================
+
+- name: Install Bamboo systemd service
+  ansible.builtin.template:
+    src: bamboo.service.j2
+    dest: "/etc/systemd/system/{{ bamboo_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Bamboo
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable Bamboo service
+  ansible.builtin.systemd:
+    name: "{{ bamboo_service_name }}"
+    enabled: true
+
+- name: Start Bamboo service
+  ansible.builtin.systemd:
+    name: "{{ bamboo_service_name }}"
+    state: started

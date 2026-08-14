@@ -1,0 +1,30 @@
+[Unit]
+Description=Atlassian Bamboo Data Center
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+
+User={{ bamboo_user }}
+Group={{ bamboo_group }}
+
+Environment="JAVA_HOME={{ bamboo_java_home }}"
+Environment="BAMBOO_HOME={{ bamboo_home }}"
+Environment="JVM_MINIMUM_MEMORY={{ bamboo_jvm_minimum_memory }}"
+Environment="JVM_MAXIMUM_MEMORY={{ bamboo_jvm_maximum_memory }}"
+
+UMask=0027
+
+ExecStart={{ bamboo_install_dir }}/bin/start-bamboo.sh
+ExecStop={{ bamboo_install_dir }}/bin/stop-bamboo.sh
+
+TimeoutStartSec=600
+TimeoutStopSec=300
+
+Restart=no
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
