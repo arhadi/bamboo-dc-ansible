@@ -77,14 +77,6 @@
   notify:
     - Restart Bamboo
 
-- name: Configure BAMBOO_HOME in setenv.sh
-  ansible.builtin.lineinfile:
-    path: "{{ bamboo_install_dir }}/bin/setenv.sh"
-    regexp: '^#?BAMBOO_HOME='
-    line: 'BAMBOO_HOME="{{ bamboo_home }}"'
-  notify:
-    - Restart Bamboo
-
 # ------------------------------------------------------------
 # Verify configuration
 # ------------------------------------------------------------
