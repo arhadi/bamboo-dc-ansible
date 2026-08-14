@@ -139,9 +139,9 @@ bamboo-dc-ansible/
 
 ## Requirements
 
-### Control/managed host
+### Ansible Execution Model
 
-The supplied inventory uses local execution:
+The current inventory runs Ansible locally on the Bamboo node:
 
 ```yaml
 ---
@@ -153,7 +153,9 @@ all:
           ansible_connection: local
 ```
 
-The current implementation therefore expects the repository and Bamboo archive to be present on the target host where Ansible is executed.
+This means the playbook is currently executed directly on the Bamboo node where the repository and Bamboo installation media are available.
+
+For a Bamboo Data Center cluster, the same role can be applied to each Bamboo node using an inventory containing the required cluster nodes. The current `localhost` inventory represents the initial node/build environment; it does **not** mean that the intended Bamboo deployment is standalone.
 
 ### Operating system
 
@@ -283,6 +285,95 @@ all:
 ```
 
 Review `remote_src` behavior in `install.yml` before converting the current local-execution design to a remote control-node model.
+
+
+### Sample Multi-Node Cluster Inventory
+
+The current development inventory uses `localhost`, but a production Bamboo Data Center deployment can define multiple Bamboo application nodes in the `bamboo` inventory group.
+
+Example with three Bamboo nodes:
+
+```yaml
+---
+all:
+  children:
+    bamboo:
+      hosts:
+        bamboo-node01:
+          ansible_host: 10.148.0.11
+          ansible_user: ansible
+
+        bamboo-node02:
+          ansible_host: 10.148.0.12
+          ansible_user: ansible
+
+        bamboo-node03:
+          ansible_host: 10.148.0.13
+          ansible_user: ansible
+```
+
+The same role can then be executed against all Bamboo nodes:
+
+```bash
+ansible-playbook \
+  -i inventory/hosts.yml \
+  playbooks/install_bamboo.yml
+```
+
+To deploy or validate one node at a time, use `--limit`:
+
+```bash
+ansible-playbook \
+  -i inventory/hosts.yml \
+  playbooks/install_bamboo.yml \
+  --limit bamboo-node01
+```
+
+Then continue with the remaining nodes as required:
+
+```bash
+ansible-playbook \
+  -i inventory/hosts.yml \
+  playbooks/install_bamboo.yml \
+  --limit bamboo-node02
+
+ansible-playbook \
+  -i inventory/hosts.yml \
+  playbooks/install_bamboo.yml \
+  --limit bamboo-node03
+```
+
+A production Bamboo Data Center inventory may also define node-specific variables where required:
+
+```yaml
+---
+all:
+  children:
+    bamboo:
+      vars:
+        bamboo_clustered: true
+
+      hosts:
+        bamboo-node01:
+          ansible_host: 10.148.0.11
+          ansible_user: ansible
+          bamboo_node_name: bamboo-node01
+
+        bamboo-node02:
+          ansible_host: 10.148.0.12
+          ansible_user: ansible
+          bamboo_node_name: bamboo-node02
+
+        bamboo-node03:
+          ansible_host: 10.148.0.13
+          ansible_user: ansible
+          bamboo_node_name: bamboo-node03
+```
+
+> **Important:** `bamboo_node_name` is shown as an example inventory variable for future node-specific cluster configuration. The current Bamboo role does not yet consume this variable.
+
+For a real multi-node Bamboo Data Center deployment, all nodes must use the same application version and compatible common configuration. Shared services such as the PostgreSQL database and any Bamboo-required shared storage must be reachable from every cluster node. Cluster-specific application configuration should be implemented and validated before treating this sample inventory as a complete production cluster definition.
+
 
 ## Configuration Variables
 
@@ -770,6 +861,11 @@ journalctl -u bamboo -n 100 --no-pager
 ```
 
 ## Data Center Mode
+
+The intended target architecture is **Bamboo Data Center / clustered deployment**.
+
+The current inventory contains only `localhost` because the automation is being developed and validated on the initial Bamboo node. This should not be interpreted as a standalone Bamboo architecture.
+
 
 The current inventory enables:
 
